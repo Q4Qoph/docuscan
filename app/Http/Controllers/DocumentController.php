@@ -41,6 +41,7 @@ class DocumentController extends Controller
         // Create the database record
         $document = Document::create([
             'user_id'           => Auth::id(),
+            'case_id'           => $request->input('case_id'), // Associate with case if provided
             'original_filename' => $request->file('document')->getClientOriginalName(),
             'storage_path'      => $path,
             'file_size_bytes'   => $request->file('document')->getSize(),
@@ -56,9 +57,11 @@ class DocumentController extends Controller
         // Dispatch the background job
         SummarizeDocument::dispatch($summary);
 
-        return redirect()
-            ->route('documents.show', $document)
-            ->with('success', 'Your document has been uploaded and is being summarized.');
+        $redirectTo = $request->input('case_id')
+            ? redirect()->route('cases.show', $request->input('case_id'))
+            : redirect()->route('documents.show', $document);
+
+        return $redirectTo->with('success', 'Document uploaded and being analysed.');
     }
 
     /**

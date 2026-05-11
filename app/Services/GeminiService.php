@@ -96,4 +96,57 @@ Document text:
 Summary:
 PROMPT;
     }
+    /**
+     * Classify a legal document into one of the known stage types.
+     *
+     * @param string $text Extracted PDF text
+     * @return string|null Stage key or null if unrecognised
+     */
+    public function classifyLegalDocument(string $text): ?string
+    {
+        $stages = implode("\n", array_map(
+            fn($k, $v) => "- {$k}: {$v}",
+            array_keys(\App\Models\LegalCase::STAGES),
+            \App\Models\LegalCase::STAGES
+        ));
+
+        $prompt = <<<PROMPT
+You are a legal document classifier for a Kenyan law firm.
+
+Classify the document below into EXACTLY ONE of these types (return only the key, nothing else):
+{$stages}
+
+If the document does not match any type, return: unknown
+
+Document text:
+---
+{$text}
+---
+
+Return only the key (e.g. "plaint" or "demand_letter"). No explanation.
+PROMPT;
+
+        $response = Http::timeout(30)
+            ->withHeader('x-goog-api-key', $this->apiKey)
+            ->post("{$this->baseUrl}/{$this->model}:generateContent", [
+                'contents' => [
+                    ['parts' => [['text' => $prompt]]]
+                ],
+                'generationConfig' => [
+                    'temperature'     => 0.1,
+                    'maxOutputTokens' => 20,
+                ],
+            ]);
+
+        if ($response->failed()) {
+            return null;
+        }
+
+        $result = trim($response->json('candidates.0.content.parts.0.text') ?? '');
+        $validKeys = array_keys(\App\Models\LegalCase::STAGES);
+
+        return in_array($result, $validKeys) ? $result : null;
+    }
+
+    
 }

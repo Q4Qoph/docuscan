@@ -18,6 +18,9 @@
                     <flux:sidebar.item icon="document-text" :href="route('documents.index')" :current="request()->routeIs('documents.*')" wire:navigate>
                         {{ __('Documents') }}
                     </flux:sidebar.item>
+                    <flux:sidebar.item icon="scale" :href="route('cases.index')" :current="request()->routeIs('cases.*')" wire:navigate>
+                        {{ __('Cases') }}
+                    </flux:sidebar.item>
                 </flux:sidebar.group>
             </flux:sidebar.nav>
 

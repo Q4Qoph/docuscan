@@ -58,6 +58,12 @@ if ($this->summary->isCompleted()) {
             // Step 2: Extract text from the PDF
             $extractedText = $pdfService->extractText($absolutePath);
 
+            // Classify the document type automatically
+            $documentType = $geminiService->classifyLegalDocument($extractedText);
+            if ($documentType) {
+                $this->summary->document->update(['document_type' => $documentType]);
+            }
+
             // Step 3: If the document is very long, summarize in chunks
             $chunks = $pdfService->chunkText($extractedText);
 

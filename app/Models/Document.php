@@ -31,4 +31,9 @@ class Document extends Model
     {
         return $this->hasOne(Summary::class)->latestOfMany();
     }
+    public function legalCase(): BelongsTo
+    {
+        return $this->belongsTo(LegalCase::class, 'case_id');
+    }
+
 }
