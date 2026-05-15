@@ -3,6 +3,7 @@
 namespace App\Jobs;
 
 use App\Models\Summary;
+use App\Services\AiService;
 use App\Services\GeminiService;
 use App\Services\PdfService;
 use Illuminate\Contracts\Queue\ShouldQueue;
@@ -11,6 +12,7 @@ use Illuminate\Queue\InteractsWithQueue;
 use Illuminate\Queue\SerializesModels;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Storage;
+use App\Services\DeadlineService;
 
 class SummarizeDocument implements ShouldQueue
 {
@@ -31,19 +33,17 @@ class SummarizeDocument implements ShouldQueue
      */
     public int $timeout = 120;
 
-    public function __construct(public Summary $summary)
-    {
-    }
+    public function __construct(public Summary $summary) {}
 
-    public function handle(PdfService $pdfService, GeminiService $geminiService): void
-    {   
+    public function handle(PdfService $pdfService, AiService $aiService): void
+    {
         // If already completed, skip — prevents duplicate processing
-if ($this->summary->isCompleted()) {
-    Log::info('SummarizeDocument skipped — already completed', [
-        'summary_id' => $this->summary->id,
-    ]);
-    return;
-}
+        if ($this->summary->isCompleted()) {
+            Log::info('SummarizeDocument skipped — already completed', [
+                'summary_id' => $this->summary->id,
+            ]);
+            return;
+        }
         Log::info('SummarizeDocument job started', ['summary_id' => $this->summary->id]);
 
         // Mark as processing so the UI updates
@@ -59,9 +59,15 @@ if ($this->summary->isCompleted()) {
             $extractedText = $pdfService->extractText($absolutePath);
 
             // Classify the document type automatically
-            $documentType = $geminiService->classifyLegalDocument($extractedText);
+            $documentType = $aiService->classifyLegalDocument($extractedText);
+            Log::info('Classification result', ['type' => $documentType]);
             if ($documentType) {
                 $this->summary->document->update(['document_type' => $documentType]);
+            }
+            if ($documentType) {
+                $deadlineService = app(DeadlineService::class);
+                $deadlineService->createDeadlineFromDocument($this->summary->document);
+                $deadlineService->completeDeadlineIfExists($this->summary->document);
             }
 
             // Step 3: If the document is very long, summarize in chunks
@@ -69,7 +75,7 @@ if ($this->summary->isCompleted()) {
 
             if (count($chunks) === 1) {
                 // Short document — summarize directly
-                $result = $geminiService->summarize($chunks[0], $this->summary->criteria);
+                $result = $aiService->summarize($chunks[0], $this->summary->criteria);
                 $finalSummary = $result['summary'];
                 $tokensUsed   = $result['tokens_used'];
                 $modelUsed    = $result['model'];
@@ -82,7 +88,7 @@ if ($this->summary->isCompleted()) {
 
                 foreach ($chunks as $i => $chunk) {
                     Log::info("Summarizing chunk " . ($i + 1) . " of " . count($chunks));
-                    $result           = $geminiService->summarize($chunk, null);
+                    $result           = $aiService->summarize($chunk, null);
                     $chunkSummaries[] = $result['summary'];
                     $totalTokens     += $result['tokens_used'];
                     $modelUsed        = $result['model'];
@@ -90,7 +96,7 @@ if ($this->summary->isCompleted()) {
 
                 // Step 2: Summarize the chunk summaries into one final summary
                 $combinedText = implode("\n\n---\n\n", $chunkSummaries);
-                $finalResult  = $geminiService->summarize(
+                $finalResult  = $aiService->summarize(
                     $combinedText,
                     $this->summary->criteria ?? 'Combine these partial summaries into one cohesive final summary.'
                 );
@@ -112,7 +118,6 @@ if ($this->summary->isCompleted()) {
                 'summary_id'  => $this->summary->id,
                 'tokens_used' => $tokensUsed,
             ]);
-
         } catch (\Exception $e) {
             Log::error('SummarizeDocument job failed', [
                 'summary_id' => $this->summary->id,
@@ -121,8 +126,8 @@ if ($this->summary->isCompleted()) {
 
             // 503 = temporary server overload — worth retrying automatically
             $isRetryable = str_contains($e->getMessage(), '503')
-                        || str_contains($e->getMessage(), 'high demand')
-                        || str_contains($e->getMessage(), 'temporarily');
+                || str_contains($e->getMessage(), 'high demand')
+                || str_contains($e->getMessage(), 'temporarily');
 
             if ($isRetryable && $this->attempts() < $this->tries) {
                 // Put status back to pending and let the queue retry

@@ -11,10 +11,12 @@ class Document extends Model
 {
     protected $fillable = [
         'user_id',
+        'case_id',
         'original_filename',
         'storage_path',
         'file_size_bytes',
         'mime_type',
+        'document_type',
     ];
 
     public function user(): BelongsTo

@@ -12,6 +12,31 @@
             <flux:heading size="lg" class="mb-4">Open a new case</flux:heading>
             <form action="{{ route('cases.store') }}" method="POST">
                 @csrf
+
+                {{-- Contact dropdown --}}
+                @if($contacts->isNotEmpty())
+                    <div class="mb-4">
+                        <flux:label for="contact_id">Existing debtor</flux:label>
+                        <select id="contact_id" name="contact_id"
+                                class="mt-1 block w-full text-sm text-zinc-600 dark:text-zinc-300
+                                       border border-zinc-300 dark:border-zinc-600 rounded-lg p-2
+                                       bg-white dark:bg-zinc-800">
+                            <option value="">{{ __('— Choose existing contact —') }}</option>
+                            @foreach($contacts as $contact)
+                                <option value="{{ $contact->id }}" {{ old('contact_id') == $contact->id ? 'selected' : '' }}>
+                                    {{ $contact->name }}
+                                    @if($contact->phone)
+                                        ({{ $contact->phone }})
+                                    @endif
+                                </option>
+                            @endforeach
+                        </select>
+                        <p class="text-xs text-zinc-400 mt-1">
+                            {{ __('Or fill in the name manually below.') }}
+                        </p>
+                    </div>
+                @endif
+
                 <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
                     <div>
                         <flux:label for="debtor_name">Debtor name</flux:label>

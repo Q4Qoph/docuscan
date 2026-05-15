@@ -38,5 +38,18 @@ return [
         'key'   => env('GEMINI_API_KEY'),
         'model' => env('GEMINI_MODEL', 'gemini-2.5-flash-preview-04-17'),
     ],
+    'groq' => [
+        'key' => env('GROQ_API_KEY'),
+        'model' => env('GROQ_MODEL', 'llama-3.3-70b-versatile'),
+    ],
+    'mistral' => [
+        'key' => env('MISTRAL_API_KEY'),
+        'model' => env('MISTRAL_MODEL', 'mistral-small-latest'),
+    ],
+    // 'gemini' => [
+    //     'key' => env('GEMINI_API_KEY'),
+    //     'model' => env('GEMINI_MODEL', 'gemini-2.0-flash'),
+    // ],
+
 
 ];

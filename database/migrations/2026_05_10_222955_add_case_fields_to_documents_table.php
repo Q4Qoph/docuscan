@@ -12,7 +12,7 @@ return new class extends Migration
             $table->foreignId('case_id')
                   ->nullable()
                   ->after('user_id')
-                  ->constrained('cases')
+                //   ->constrained('cases')
                   ->nullOnDelete();
 
             $table->string('document_type')->nullable()->after('mime_type');

@@ -3,11 +3,13 @@
 use Illuminate\Support\Facades\Route;
 use App\Http\Controllers\DocumentController;
 use App\Http\Controllers\CaseController;
+use App\Http\Controllers\DashboardController;
+use App\Http\Controllers\ContactController;
 
 Route::view('/', 'welcome')->name('home');
 
 Route::middleware(['auth', 'verified'])->group(function () {
-    Route::view('dashboard', 'dashboard')->name('dashboard');
+    Route::get('dashboard', [DashboardController::class, 'index'])->name('dashboard');
 });
 
 require __DIR__.'/settings.php';
@@ -21,4 +23,5 @@ Route::middleware('auth')->group(function () {
     Route::get('/cases', [CaseController::class, 'index'])->name('cases.index');
     Route::post('/cases', [CaseController::class, 'store'])->name('cases.store');
     Route::get('/cases/{case}', [CaseController::class, 'show'])->name('cases.show');
+    Route::get('/contacts', [ContactController::class, 'index'])->name('contacts.index');
 });
