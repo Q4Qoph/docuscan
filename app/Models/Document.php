@@ -16,7 +16,13 @@ class Document extends Model
         'storage_path',
         'file_size_bytes',
         'mime_type',
+        'extracted_text',
         'document_type',
+        'metadata'
+
+    ];
+    protected $casts = [
+        'metadata' => 'array',
     ];
 
     public function user(): BelongsTo
@@ -37,5 +43,4 @@ class Document extends Model
     {
         return $this->belongsTo(LegalCase::class, 'case_id');
     }
-
 }

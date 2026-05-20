@@ -58,6 +58,10 @@ class SummarizeDocument implements ShouldQueue
             // Step 2: Extract text from the PDF
             $extractedText = $pdfService->extractText($absolutePath);
 
+
+            // Save it to the document record immediately
+            $this->summary->document->update(['extracted_text' => $extractedText]);
+
             // Classify the document type automatically
             $documentType = $aiService->classifyLegalDocument($extractedText);
             Log::info('Classification result', ['type' => $documentType]);

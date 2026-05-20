@@ -172,4 +172,181 @@ Document text:
 Summary:
 PROMPT;
     }
+    /**
+ * Extract key facts from a legal document and return structured data.
+ */
+public function extractKeyFacts(string $text): array
+{
+    $prompt = <<<PROMPT
+You are a legal document analyzer for a Kenyan law firm. Extract the following from the text below and return ONLY a JSON object (no other text, no markdown, no backticks):
+
+{
+  "parties": {
+    "plaintiff": "...",
+    "defendant": "..."
+  },
+  "dates": {
+    "document_date": "YYYY-MM-DD",
+    "relevant_dates": [{"label": "string", "date": "YYYY-MM-DD"}]
+  },
+  "claim_amount": 0.00,
+  "relief_sought": ["string", ...],
+  "key_events": ["string", ...],
+  "court": "string or null",
+  "case_number": "string or null",
+  "judge": "string or null"
+}
+
+If a field is not present, use null or empty array. Do not invent information.
+
+Document text:
+---
+{$text}
+---
+PROMPT;
+
+    $result = $this->callApi($prompt, 1024);
+    $raw = trim($result['summary'] ?? '');
+
+    // Clean possible markdown code fences
+    $raw = str_replace(['```json', '```'], '', $raw);
+    $raw = trim($raw);
+
+    $data = json_decode($raw, true);
+
+    if (!is_array($data)) {
+        // Fallback: try extracting from the raw string
+        // If JSON parsing fails, return an empty structure
+        return [
+            'parties' => ['plaintiff' => null, 'defendant' => null],
+            'dates' => ['document_date' => null, 'relevant_dates' => []],
+            'claim_amount' => null,
+            'relief_sought' => [],
+            'key_events' => [],
+            'court' => null,
+            'case_number' => null,
+            'judge' => null,
+            'error' => 'AI did not return valid JSON.',
+            'raw' => $raw,
+        ];
+    }
+
+    return $data;
+}
+/**
+ * Ask a question about the provided text, streaming the response chunk by chunk.
+ * Calls $onChunk for each piece of the answer.
+ */
+public function askAboutText(string $question, string $contextText, callable $onChunk): string
+{
+    $prompt = <<<PROMPT
+You are a legal assistant for a Kenyan law firm. Answer the following question based ONLY on the document text provided. Be concise.
+
+Document text:
+---
+{$contextText}
+---
+
+Question: {$question}
+Answer:
+PROMPT;
+
+    return $this->callStreamingApi($prompt, 1024, $onChunk);
+}
+
+/**
+ * Streaming API call (works with Groq and Mistral; Gemini needs different handling).
+ */
+private function callStreamingApi(string $prompt, int $maxTokens, callable $onChunk): string
+{
+    return match ($this->driver) {
+        'groq' => $this->streamGroq($prompt, $maxTokens, $onChunk),
+        'mistral' => $this->streamMistral($prompt, $maxTokens, $onChunk),
+        'gemini' => $this->streamGeminiFallback($prompt, $maxTokens, $onChunk),
+        default => throw new \Exception("Streaming not supported for {$this->driver}"),
+    };
+}
+
+private function streamGroq(string $prompt, int $maxTokens, callable $onChunk): string
+{
+    $payload = [
+        'model' => $this->config['model'],
+        'messages' => [['role' => 'user', 'content' => $prompt]],
+        'max_tokens' => $maxTokens,
+        'temperature' => 0.3,
+        'stream' => true,
+    ];
+
+    $response = Http::timeout(120)
+        ->withToken($this->config['api_key'])
+        ->withOptions(['stream' => true])
+        ->post('https://api.groq.com/openai/v1/chat/completions', $payload);
+
+    $fullText = '';
+    $body = $response->toPsrResponse()->getBody();
+
+    while (!$body->eof()) {
+        $line = $this->readLine($body);
+        if (empty(trim($line))) continue;
+
+        $line = str_replace('data: ', '', $line);
+        if ($line === '[DONE]') break;
+
+        $data = json_decode($line, true);
+        $content = $data['choices'][0]['delta']['content'] ?? '';
+        if ($content) {
+            $fullText .= $content;
+            $onChunk($content);
+        }
+    }
+
+    return $fullText;
+}
+
+private function readLine($body): string
+{
+    $buffer = '';
+    while (!$body->eof()) {
+        $byte = $body->read(1);
+        if ($byte === "\n") return $buffer;
+        $buffer .= $byte;
+    }
+    return $buffer;
+}
+
+// Fallback: for Gemini or if streaming fails, call non-streaming and send chunks as one
+private function streamGeminiFallback(string $prompt, int $maxTokens, callable $onChunk): string
+{
+    $result = $this->callGemini($prompt, $maxTokens);
+    $text = $result['summary'];
+    // Simulate streaming by sending 20 chars at a time
+    foreach (str_split($text, 20) as $chunk) {
+        $onChunk($chunk);
+        usleep(50000); // 50ms delay to simulate
+    }
+    return $text;
+}
+// to do - For Mistral, add a similar streamMistral method using their streaming endpoint
+
+
+public function generateTimeline(array $documents): array
+{
+    $context = '';
+    foreach ($documents as $id => $text) {
+        $context .= "Document ID {$id}:\n{$text}\n\n";
+    }
+
+    $prompt = <<<PROMPT
+You are a legal assistant. Based on the document texts below, generate a chronological timeline of events. Return ONLY a JSON array of objects with keys "date" (YYYY-MM-DD), "title", "description", and "source_document_id" (the document ID that this event appears in). Order by date. Do not include events without a date.
+
+Document texts:
+{$context}
+PROMPT;
+
+    $result = $this->callApi($prompt, 2048);
+    $raw = trim($result['summary'] ?? '');
+    $raw = str_replace(['```json', '```'], '', $raw);
+    $data = json_decode($raw, true);
+    return is_array($data) ? $data : [];
+}
 }

@@ -71,6 +71,13 @@ class LegalCase extends Model
     {
         return $this->hasMany(TimeEntry::class, 'case_id');
     }
+    public function getAllDocumentTexts(): array
+    {
+        return $this->documents()
+            ->whereNotNull('extracted_text')
+            ->pluck('extracted_text', 'id')
+            ->toArray();
+    }
 
     /**
      * Returns list of stage keys that have at least one document uploaded.
